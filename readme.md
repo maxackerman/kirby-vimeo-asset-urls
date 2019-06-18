@@ -1,9 +1,10 @@
 # Kirby Plugin: Get Vimeo Asset URLs
 
-*This requires a paid vimeo account*
+*This requires a paid Vimeo account*
 
-Add vimeo credentials to config
-You'll need to set these to your account's as show [here](https://developer.vimeo.com/apps/new)
+Setup app with Vimeo [here](https://developer.vimeo.com/apps/new)
+
+Add vimeo credentials to Kirby config:
 
 ```
 c::set(array(
