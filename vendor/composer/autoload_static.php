@@ -4,7 +4,7 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInita216f0a469d0854a29711476b46953cf
+class ComposerStaticInit8d89bf4eb07f06c0d043272e7432def2
 {
     public static $files = array (
         '0e6d7bf4a5811bfa5cf40c5ccd6fae6a' => __DIR__ . '/..' . '/symfony/polyfill-mbstring/bootstrap.php',
@@ -21,7 +21,7 @@ class ComposerStaticInita216f0a469d0854a29711476b46953cf
     public static $prefixLengthsPsr4 = array (
         'V' => 
         array (
-            'Violet\\kirby-vimeo-asset-urls\\' => 30,
+            'Violet\\Vimeoassets\\' => 19,
             'Vimeo\\' => 6,
         ),
         'T' => 
@@ -65,7 +65,7 @@ class ComposerStaticInita216f0a469d0854a29711476b46953cf
     );
 
     public static $prefixDirsPsr4 = array (
-        'Violet\\kirby-vimeo-asset-urls\\' => 
+        'Violet\\Vimeoassets\\' => 
         array (
             0 => __DIR__ . '/../..' . '/src',
         ),
@@ -913,16 +913,17 @@ class ComposerStaticInita216f0a469d0854a29711476b46953cf
         'Vimeo\\Exceptions\\VimeoRequestException' => __DIR__ . '/..' . '/vimeo/vimeo-api/src/Vimeo/Exceptions/VimeoRequestException.php',
         'Vimeo\\Exceptions\\VimeoUploadException' => __DIR__ . '/..' . '/vimeo/vimeo-api/src/Vimeo/Exceptions/VimeoUploadException.php',
         'Vimeo\\Vimeo' => __DIR__ . '/..' . '/vimeo/vimeo-api/src/Vimeo/Vimeo.php',
+        'Violet\\Vimeoassets\\Vimeo' => __DIR__ . '/../..' . '/src/kirby-vimeo-asset-urls.php',
     );
 
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->prefixLengthsPsr4 = ComposerStaticInita216f0a469d0854a29711476b46953cf::$prefixLengthsPsr4;
-            $loader->prefixDirsPsr4 = ComposerStaticInita216f0a469d0854a29711476b46953cf::$prefixDirsPsr4;
-            $loader->fallbackDirsPsr4 = ComposerStaticInita216f0a469d0854a29711476b46953cf::$fallbackDirsPsr4;
-            $loader->prefixesPsr0 = ComposerStaticInita216f0a469d0854a29711476b46953cf::$prefixesPsr0;
-            $loader->classMap = ComposerStaticInita216f0a469d0854a29711476b46953cf::$classMap;
+            $loader->prefixLengthsPsr4 = ComposerStaticInit8d89bf4eb07f06c0d043272e7432def2::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInit8d89bf4eb07f06c0d043272e7432def2::$prefixDirsPsr4;
+            $loader->fallbackDirsPsr4 = ComposerStaticInit8d89bf4eb07f06c0d043272e7432def2::$fallbackDirsPsr4;
+            $loader->prefixesPsr0 = ComposerStaticInit8d89bf4eb07f06c0d043272e7432def2::$prefixesPsr0;
+            $loader->classMap = ComposerStaticInit8d89bf4eb07f06c0d043272e7432def2::$classMap;
 
         }, null, ClassLoader::class);
     }

@@ -749,4 +749,5 @@ return array(
     'Vimeo\\Exceptions\\VimeoRequestException' => $vendorDir . '/vimeo/vimeo-api/src/Vimeo/Exceptions/VimeoRequestException.php',
     'Vimeo\\Exceptions\\VimeoUploadException' => $vendorDir . '/vimeo/vimeo-api/src/Vimeo/Exceptions/VimeoUploadException.php',
     'Vimeo\\Vimeo' => $vendorDir . '/vimeo/vimeo-api/src/Vimeo/Vimeo.php',
+    'Violet\\Vimeoassets\\Vimeo' => $baseDir . '/src/kirby-vimeo-asset-urls.php',
 );

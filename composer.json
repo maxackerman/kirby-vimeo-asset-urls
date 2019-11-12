@@ -15,7 +15,7 @@
     },
     "autoload": {
         "psr-4": {
-            "Violet\\kirby-vimeo-asset-urls\\": "src/"
+            "Violet\\Vimeoassets\\": "src/"
         }
     },
     "config": {
