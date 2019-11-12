@@ -1,6 +1,6 @@
 {
-    "name": "violet/kirby-vimeo-asset-urls",
-    "description": "Kirby Plugin to Vimeo asset URLs through the Vimeo API",
+    "name": "violetoffice/vimeoassets",
+    "description": "Kirby Plugin to get Vimeo asset URLs through the Vimeo API",
     "type": "kirby-plugin",
     "license": "MIT",
     "authors": [
@@ -15,7 +15,7 @@
     },
     "autoload": {
         "psr-4": {
-            "Violet\\Vimeoassets\\": "src/"
+            "Violetoffice\\Vimeoassets\\": "src/"
         }
     },
     "config": {

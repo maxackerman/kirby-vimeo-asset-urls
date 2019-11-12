@@ -2,7 +2,7 @@
 
 @include_once __DIR__ . '/vendor/autoload.php';
 
-Kirby::plugin('violet/kirby-vimeo-asset-urls', [
+Kirby::plugin('violetoffice/vimeoassets', [
   'options' => [
     'client_id' => null,
     'client_secrets' => null,
@@ -10,7 +10,7 @@ Kirby::plugin('violet/kirby-vimeo-asset-urls', [
   ],
   'hooks' => [
     'file.update:after' => function ($file) {
-      \Violet\Vimeoassets\Vimeo::checkForLinks($file);
+      \Violetoffice\Vimeoassets\Vimeo::checkForLinks($file);
     }
   ]
 ]);

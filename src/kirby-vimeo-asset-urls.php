@@ -1,6 +1,6 @@
 <?php
 
-namespace Violet\Vimeoassets;
+namespace Violetoffice\Vimeoassets;
 
 
 class Vimeo
@@ -12,13 +12,13 @@ class Vimeo
     $updates = array();
 
     if($file->hasfullvideo()->isTrue() && $file->fullvimeourl() != ''){
-      $updates = \Violet\Vimeoassets\Vimeo::getAssets($updates, $file->fullvimeourl(), 'full');
+      $updates = \Violetoffice\Vimeoassets\Vimeo::getAssets($updates, $file->fullvimeourl(), 'full');
     }else{
       $updates['fullvimeo'] = '';
     }
 
     if($file->haspostervideo()->isTrue() && $file->postervimeourl() != ''){
-      $updates = \Violet\Vimeoassets\Vimeo::getAssets($updates, $file->postervimeourl(), 'poster');
+      $updates = \Violetoffice\Vimeoassets\Vimeo::getAssets($updates, $file->postervimeourl(), 'poster');
     }else{
       $updates['postervimeo'] = '';
     }

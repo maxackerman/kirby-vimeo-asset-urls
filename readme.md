@@ -7,11 +7,15 @@ Setup app with Vimeo [here](https://developer.vimeo.com/apps/new)
 Add vimeo credentials to Kirby config:
 
 ```
-c::set(array(
-  'vimeo.client_id' => 'xxxxxxxxx',
-  'vimeo.client_secrets' => 'xxxxxxxxx',
-  'vimeo.token' => 'xxxxxxxxx'
-));
+# /site/config/config.php
+
+<?php
+
+return [
+  'violetoffice.vimeoassets.client_id' => 'XXXXX',
+  'violetoffice.vimeoassets.client_secrets' => 'XXXXX',
+  'violetoffice.vimeoassets.token' => 'XXXXX',
+];
 ```
 
 Add a video field to a file blueprint:
@@ -35,7 +39,6 @@ fields:
     placeholder: https://vimeo.com/37776933
     when:
       haspostervideo: true
-
 ```
 
 Using the the data your templates:
