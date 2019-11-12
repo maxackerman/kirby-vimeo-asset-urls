@@ -14,9 +14,35 @@ c::set(array(
 ));
 ```
 
-Use the date in your templates:
+Add a video field to a file blueprint:
 
 ```
+# /site/blueprints/files/image.yml
+
+title: Example Image/Video        
+
+fields:
+  haspostervideo:
+    label: Include autoplay poster video?
+    type: toggle
+    default: false
+    text:
+       - 'no'
+       - 'yes'
+  postervimeourl:
+    label: Vimeo URL
+    type: url
+    placeholder: https://vimeo.com/37776933
+    when:
+      haspostervideo: true
+
+```
+
+Using the the data your templates:
+
+```
+<?php $item->postervimeo() = $vimeodata ?>
+
 <?php foreach($vimeodata->toStructure() as $file): ?>
   type: <?= $file->type() ?><br />
   quality: <?= $file->quality() ?><br />
@@ -25,3 +51,7 @@ Use the date in your templates:
   <hr>
 <?php endforeach ?>
 ```
+
+## TODO
+
+- make field names a config option

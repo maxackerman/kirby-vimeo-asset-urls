@@ -1,5 +1,24 @@
 {
+    "name": "violet/kirby-vimeo-asset-urls",
+    "description": "Kirby Plugin to Vimeo asset URLs through the Vimeo API",
+    "type": "kirby-plugin",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Max Ackerman",
+            "email": "max@violetoffice.com"
+        }
+    ],
     "require": {
+        "getkirby/composer-installer": "^1.1",
         "vimeo/vimeo-api": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Violet\\kirby-vimeo-asset-urls\\": "src/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true
     }
 }
