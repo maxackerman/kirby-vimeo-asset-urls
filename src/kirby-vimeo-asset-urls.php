@@ -33,9 +33,9 @@ class Vimeo
   public static function getAssets($a, $url, $prefix)
   {
     // vimeo creds from config file
-    $client_id = option('violet.vimeoassets.client_id');
-    $client_secret = option('violet.vimeoassets.client_secrets');
-    $access_token = option('violet.vimeoassets.token');
+    $client_id = option('violetoffice.vimeoassets.client_id');
+    $client_secret = option('violetoffice.vimeoassets.client_secrets');
+    $access_token = option('violetoffice.vimeoassets.token');
 
     // authenticate
     $vimeo = new \Vimeo\Vimeo($client_id, $client_secret, $access_token);
