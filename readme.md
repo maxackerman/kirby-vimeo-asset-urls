@@ -58,3 +58,4 @@ Using the the data your templates:
 ## TODO
 
 - make field names a config option
+- error / success notifications
