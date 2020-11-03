@@ -3,7 +3,10 @@
 namespace TusPhp\Tus;
 
 use TusPhp\File;
-use TusPhp\Exception\Exception;
+use Carbon\Carbon;
+use TusPhp\Config;
+use Ramsey\Uuid\Uuid;
+use TusPhp\Exception\TusException;
 use TusPhp\Exception\FileException;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Exception\ClientException;
@@ -29,6 +32,9 @@ class Client extends AbstractTus
     protected $key;
 
     /** @var string */
+    protected $url;
+
+    /** @var string */
     protected $checksum;
 
     /** @var int */
@@ -40,21 +46,34 @@ class Client extends AbstractTus
     /** @var string */
     protected $checksumAlgorithm = 'sha256';
 
+    /** @var array */
+    protected $metadata = [];
+
+    /** @var array */
+    protected $headers = [];
+
     /**
      * Client constructor.
      *
      * @param string $baseUri
      * @param array  $options
+     *
+     * @throws \ReflectionException
      */
     public function __construct(string $baseUri, array $options = [])
     {
+        $this->headers      = $options['headers'] ?? [];
         $options['headers'] = [
             'Tus-Resumable' => self::TUS_PROTOCOL_VERSION,
-        ] + ($options['headers'] ?? []);
+        ] + ($this->headers);
 
         $this->client = new GuzzleClient(
             ['base_uri' => $baseUri] + $options
         );
+
+        Config::set(__DIR__ . '/../Config/client.php');
+
+        $this->setCache('file');
     }
 
     /**
@@ -75,6 +94,8 @@ class Client extends AbstractTus
 
         $this->fileName = $name ?? basename($this->filePath);
         $this->fileSize = filesize($file);
+
+        $this->addMetadata('filename', $this->fileName);
 
         return $this;
     }
@@ -98,7 +119,7 @@ class Client extends AbstractTus
      */
     public function setFileName(string $name) : self
     {
-        $this->fileName = $name;
+        $this->addMetadata('filename', $this->fileName = $name);
 
         return $this;
     }
@@ -134,6 +155,20 @@ class Client extends AbstractTus
     }
 
     /**
+     * Set checksum.
+     *
+     * @param string $checksum
+     *
+     * @return Client
+     */
+    public function setChecksum(string $checksum) : self
+    {
+        $this->checksum = $checksum;
+
+        return $this;
+    }
+
+    /**
      * Get checksum.
      *
      * @return string
@@ -141,10 +176,81 @@ class Client extends AbstractTus
     public function getChecksum() : string
     {
         if (empty($this->checksum)) {
-            $this->checksum = hash_file($this->getChecksumAlgorithm(), $this->getFilePath());
+            $this->setChecksum(hash_file($this->getChecksumAlgorithm(), $this->getFilePath()));
         }
 
         return $this->checksum;
+    }
+
+    /**
+     * Add metadata.
+     *
+     * @param string $key
+     * @param string $value
+     *
+     * @return Client
+     */
+    public function addMetadata(string $key, string $value) : self
+    {
+        $this->metadata[$key] = base64_encode($value);
+
+        return $this;
+    }
+
+    /**
+     * Remove metadata.
+     *
+     * @param string $key
+     *
+     * @return Client
+     */
+    public function removeMetadata(string $key) : self
+    {
+        unset($this->metadata[$key]);
+
+        return $this;
+    }
+
+    /**
+     * Set metadata.
+     *
+     * @param array $items
+     *
+     * @return Client
+     */
+    public function setMetadata(array $items) : self
+    {
+        $items = array_map('base64_encode', $items);
+
+        $this->metadata = $items;
+
+        return $this;
+    }
+
+    /**
+     * Get metadata.
+     *
+     * @return array
+     */
+    public function getMetadata() : array
+    {
+        return $this->metadata;
+    }
+
+    /**
+     * Get metadata for Upload-Metadata header.
+     *
+     * @return string
+     */
+    protected function getUploadMetadataHeader() : string
+    {
+        $metadata = [];
+
+        foreach ($this->getMetadata() as $key => $value) {
+            $metadata[] = "{$key} {$value}";
+        }
+
+        return implode(',', $metadata);
     }
 
     /**
@@ -172,6 +278,22 @@ class Client extends AbstractTus
     }
 
     /**
+     * Get url.
+     *
+     * @return string|null
+     */
+    public function getUrl() : ?string
+    {
+        $this->url = $this->getCache()->get($this->getKey())['location'] ?? null;
+
+        if ( ! $this->url) {
+            throw new FileException('File not found.');
+        }
+
+        return $this->url;
+    }
+
+    /**
      * Set checksum algorithm.
      *
      * @param string $algorithm
@@ -193,6 +315,18 @@ class Client extends AbstractTus
     public function getChecksumAlgorithm() : string
     {
         return $this->checksumAlgorithm;
+    }
+
+    /**
+     * Check if current upload is expired.
+     *
+     * @return bool
+     */
+    public function isExpired() : bool
+    {
+        $expiresAt = $this->getCache()->get($this->getKey())['expires_at'] ?? null;
+
+        return empty($expiresAt) || Carbon::parse($expiresAt)->lt(Carbon::now());
     }
 
     /**
@@ -236,24 +370,29 @@ class Client extends AbstractTus
      *
      * @param int $bytes Bytes to upload
      *
-     * @throws Exception
+     * @throws TusException
      * @throws ConnectionException
      *
      * @return int
      */
     public function upload(int $bytes = -1) : int
     {
-        $key    = $this->getKey();
         $bytes  = $bytes < 0 ? $this->getFileSize() : $bytes;
         $offset = $this->partialOffset < 0 ? 0 : $this->partialOffset;
 
         try {
             // Check if this upload exists with HEAD request.
-            $offset = $this->sendHeadRequest($key);
+            $offset = $this->sendHeadRequest();
         } catch (FileException | ClientException $e) {
-            $this->create($key);
+            // Create a new upload.
+            $this->url = $this->create($this->getKey());
         } catch (ConnectException $e) {
             throw new ConnectionException("Couldn't connect to server.");
+        }
+
+        // Verify that upload is not yet expired.
+        if ($this->isExpired()) {
+            throw new TusException('Upload expired.');
         }
 
         // Now, resume upload with PATCH request.
@@ -267,10 +406,8 @@ class Client extends AbstractTus
      */
     public function getOffset()
     {
-        $key = $this->getKey();
-
         try {
-            $offset = $this->sendHeadRequest($key);
+            $offset = $this->sendHeadRequest();
         } catch (FileException | ClientException $e) {
             return false;
         }
@@ -285,15 +422,15 @@ class Client extends AbstractTus
      *
      * @throws FileException
      *
-     * @return void
+     * @return string
      */
-    public function create(string $key)
+    public function create(string $key) : string
     {
-        $headers = [
+        $headers = $this->headers + [
             'Upload-Length' => $this->fileSize,
             'Upload-Key' => $key,
             'Upload-Checksum' => $this->getUploadChecksumHeader(),
-            'Upload-Metadata' => 'filename ' . base64_encode($this->fileName),
+            'Upload-Metadata' => $this->getUploadMetadataHeader(),
         ];
 
         if ($this->isPartial()) {
@@ -309,6 +446,15 @@ class Client extends AbstractTus
         if (HttpResponse::HTTP_CREATED !== $statusCode) {
             throw new FileException('Unable to create resource.');
         }
+
+        $uploadLocation = current($response->getHeader('location'));
+
+        $this->getCache()->set($this->getKey(), [
+            'location' => $uploadLocation,
+            'expires_at' => Carbon::now()->addSeconds($this->getCache()->getTtl())->format($this->getCache()::RFC_7231),
+        ]);
+
+        return $uploadLocation;
     }
 
     /**
@@ -322,11 +468,11 @@ class Client extends AbstractTus
     public function concat(string $key, ...$partials) : string
     {
         $response = $this->getClient()->post($this->apiPath, [
-            'headers' => [
+            'headers' => $this->headers + [
                 'Upload-Length' => $this->fileSize,
                 'Upload-Key' => $key,
                 'Upload-Checksum' => $this->getUploadChecksumHeader(),
-                'Upload-Metadata' => 'filename ' . base64_encode($this->fileName),
+                'Upload-Metadata' => $this->getUploadMetadataHeader(),
                 'Upload-Concat' => self::UPLOAD_TYPE_FINAL . ';' . implode(' ', $partials),
             ],
         ]);
@@ -345,16 +491,14 @@ class Client extends AbstractTus
     /**
      * Send DELETE request.
      *
-     * @param string $key
-     *
      * @throws FileException
      *
      * @return void
      */
-    public function delete(string $key)
+    public function delete()
     {
         try {
-            $this->getClient()->delete($this->apiPath . '/' . $key);
+            $this->getClient()->delete($this->getUrl());
         } catch (ClientException $e) {
             $statusCode = $e->getResponse()->getStatusCode();
 
@@ -382,24 +526,22 @@ class Client extends AbstractTus
         $key = $this->getKey();
 
         if (false !== strpos($key, self::PARTIAL_UPLOAD_NAME_SEPARATOR)) {
-            list($key, /* $partialKey */) = explode(self::PARTIAL_UPLOAD_NAME_SEPARATOR, $key);
+            [$key, /* $partialKey */] = explode(self::PARTIAL_UPLOAD_NAME_SEPARATOR, $key);
         }
 
-        $this->key = $key . uniqid(self::PARTIAL_UPLOAD_NAME_SEPARATOR);
+        $this->key = $key . self::PARTIAL_UPLOAD_NAME_SEPARATOR . Uuid::uuid4()->toString();
     }
 
     /**
      * Send HEAD request.
      *
-     * @param string $key
-     *
      * @throws FileException
      *
      * @return int
      */
-    protected function sendHeadRequest(string $key) : int
+    protected function sendHeadRequest() : int
     {
-        $response   = $this->getClient()->head($this->apiPath . '/' . $key);
+        $response   = $this->getClient()->head($this->getUrl());
         $statusCode = $response->getStatusCode();
 
         if (HttpResponse::HTTP_OK !== $statusCode) {
@@ -415,7 +557,7 @@ class Client extends AbstractTus
      * @param int $bytes
      * @param int $offset
      *
-     * @throws Exception
+     * @throws TusException
      * @throws FileException
      * @throws ConnectionException
      *
@@ -424,9 +566,9 @@ class Client extends AbstractTus
     protected function sendPatchRequest(int $bytes, int $offset) : int
     {
         $data    = $this->getData($offset, $bytes);
-        $headers = [
+        $headers = $this->headers + [
             'Content-Type' => self::HEADER_CONTENT_TYPE,
-            'Content-Length' => strlen($data),
+            'Content-Length' => \strlen($data),
             'Upload-Checksum' => $this->getUploadChecksumHeader(),
         ];
 
@@ -437,31 +579,44 @@ class Client extends AbstractTus
         }
 
         try {
-            $response = $this->getClient()->patch($this->apiPath . '/' . $this->getKey(), [
+            $response = $this->getClient()->patch($this->getUrl(), [
                 'body' => $data,
                 'headers' => $headers,
             ]);
 
             return (int) current($response->getHeader('upload-offset'));
         } catch (ClientException $e) {
-            $statusCode = $e->getResponse()->getStatusCode();
-
-            if (HttpResponse::HTTP_REQUESTED_RANGE_NOT_SATISFIABLE === $statusCode) {
-                throw new FileException('The uploaded file is corrupt.');
-            }
-
-            if (HttpResponse::HTTP_CONTINUE === $statusCode) {
-                throw new ConnectionException('Connection aborted by user.');
-            }
-
-            if (HttpResponse::HTTP_UNSUPPORTED_MEDIA_TYPE === $statusCode) {
-                throw new Exception('Unsupported media Types.');
-            }
-
-            throw new Exception($e->getResponse()->getBody(), $statusCode);
+            throw $this->handleClientException($e);
         } catch (ConnectException $e) {
             throw new ConnectionException("Couldn't connect to server.");
         }
+    }
+
+    /**
+     * Handle client exception during patch request.
+     *
+     * @param ClientException $e
+     *
+     * @return mixed
+     */
+    protected function handleClientException(ClientException $e)
+    {
+        $response   = $e->getResponse();
+        $statusCode = $response !== null ? $response->getStatusCode() : HttpResponse::HTTP_INTERNAL_SERVER_ERROR;
+
+        if (HttpResponse::HTTP_REQUESTED_RANGE_NOT_SATISFIABLE === $statusCode) {
+            return new FileException('The uploaded file is corrupt.');
+        }
+
+        if (HttpResponse::HTTP_CONTINUE === $statusCode) {
+            return new ConnectionException('Connection aborted by user.');
+        }
+
+        if (HttpResponse::HTTP_UNSUPPORTED_MEDIA_TYPE === $statusCode) {
+            return new TusException('Unsupported media types.');
+        }
+
+        return new TusException($response->getBody(), $statusCode);
     }
 
     /**
@@ -483,7 +638,7 @@ class Client extends AbstractTus
 
         $file->close($handle);
 
-        return (string) $data;
+        return $data;
     }
 
     /**

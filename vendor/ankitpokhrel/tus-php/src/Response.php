@@ -19,14 +19,6 @@ class Response
     protected $headers = [];
 
     /**
-     * Response constructor.
-     */
-    public function __construct()
-    {
-        $this->response = new HttpResponse;
-    }
-
-    /**
      * Set create only.
      *
      * @param bool $state
@@ -101,11 +93,11 @@ class Response
     {
         $headers = array_merge($this->headers, $headers);
 
-        if (is_array($content)) {
+        if (\is_array($content)) {
             $content = json_encode($content);
         }
 
-        $response = $this->response->create($content, $status, $headers);
+        $response = new HttpResponse($content, $status, $headers);
 
         return $this->createOnly ? $response : $response->send();
     }
@@ -130,11 +122,10 @@ class Response
 
         $response->prepare(HttpRequest::createFromGlobals());
 
-        if ( ! is_null($name)) {
+        if ($name !== null) {
             $response = $response->setContentDisposition(
                 $disposition,
-                $name,
-                iconv('UTF-8', 'ASCII//TRANSLIT', $name)
+                $name
             );
         }
 

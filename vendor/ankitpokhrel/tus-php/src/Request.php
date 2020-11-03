@@ -2,6 +2,7 @@
 
 namespace TusPhp;
 
+use TusPhp\Tus\Server;
 use Symfony\Component\HttpFoundation\Request as HttpRequest;
 
 class Request
@@ -69,12 +70,12 @@ class Request
     /**
      * Retrieve a header from the request.
      *
-     * @param  string            $key
-     * @param  string|array|null $default
+     * @param string               $key
+     * @param string|string[]|null $default
      *
      * @return string|null
      */
-    public function header(string $key, $default = null)
+    public function header(string $key, $default = null) : ?string
     {
         return $this->request->headers->get($key, $default);
     }
@@ -117,7 +118,13 @@ class Request
      */
     public function extractFileName() : string
     {
-        return $this->extractMeta('name') ?: $this->extractMeta('filename');
+        $name = $this->extractMeta('name') ?: $this->extractMeta('filename');
+
+        if ( ! $this->isValidFilename($name)) {
+            return '';
+        }
+
+        return $name;
     }
 
     /**
@@ -138,7 +145,7 @@ class Request
         $uploadMetaDataChunks = explode(',', $uploadMetaData);
 
         foreach ($uploadMetaDataChunks as $chunk) {
-            list($key, $value) = explode(' ', $chunk);
+            [$key, $value] = explode(' ', $chunk);
 
             if ($key === $requestedKey) {
                 return base64_decode($value);
@@ -149,13 +156,38 @@ class Request
     }
 
     /**
+     * Extracts all meta data from the request header.
+     *
+     * @return string[]
+     */
+    public function extractAllMeta() : array
+    {
+        $uploadMetaData = $this->request->headers->get('Upload-Metadata');
+
+        if (empty($uploadMetaData)) {
+            return [];
+        }
+
+        $uploadMetaDataChunks = explode(',', $uploadMetaData);
+
+        $result = [];
+        foreach ($uploadMetaDataChunks as $chunk) {
+            [$key, $value] = explode(' ', $chunk);
+
+            $result[$key] = base64_decode($value);
+        }
+
+        return $result;
+    }
+
+    /**
      * Extract partials from header.
      *
      * @return array
      */
     public function extractPartials() : array
     {
-        return $this->extractFromHeader('Upload-Concat', 'final;');
+        return $this->extractFromHeader('Upload-Concat', Server::UPLOAD_TYPE_FINAL . ';');
     }
 
     /**
@@ -165,7 +197,7 @@ class Request
      */
     public function isPartial() : bool
     {
-        return $this->header('Upload-Concat') === 'partial';
+        return Server::UPLOAD_TYPE_PARTIAL === $this->header('Upload-Concat');
     }
 
     /**
@@ -175,7 +207,7 @@ class Request
      */
     public function isFinal() : bool
     {
-        return false !== strpos($this->header('Upload-Concat'), 'final;');
+        return false !== strpos($this->header('Upload-Concat'), Server::UPLOAD_TYPE_FINAL . ';');
     }
 
     /**
@@ -186,5 +218,25 @@ class Request
     public function getRequest() : HttpRequest
     {
         return $this->request;
+    }
+
+    /**
+     * Validate file name.
+     *
+     * @param string $filename
+     *
+     * @return bool
+     */
+    protected function isValidFilename(string $filename) : bool
+    {
+        $forbidden = ['../', '"', "'", '&', '/', '\\', '?', '#', ':'];
+
+        foreach ($forbidden as $char) {
+            if (false !== strpos($filename, $char)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

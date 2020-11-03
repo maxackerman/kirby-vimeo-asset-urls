@@ -5,7 +5,7 @@ namespace TusPhp;
 class Config
 {
     /** @const string */
-    const DEFAULT_CONFIG_PATH = __DIR__ . '/Config/default.php';
+    private const DEFAULT_CONFIG_PATH = __DIR__ . '/Config/server.php';
 
     /** @var array */
     protected static $config = [];
@@ -24,7 +24,7 @@ class Config
             return;
         }
 
-        if (is_array($config)) {
+        if (\is_array($config)) {
             self::$config = $config;
         } else {
             self::$config = require $config ?? self::DEFAULT_CONFIG_PATH;
@@ -49,12 +49,12 @@ class Config
         $keys  = explode('.', $key);
         $value = self::$config;
 
-        foreach ($keys as $key) {
-            if ( ! isset($value[$key])) {
+        foreach ($keys as $k) {
+            if ( ! isset($value[$k])) {
                 return null;
             }
 
-            $value = $value[$key];
+            $value = $value[$k];
         }
 
         return $value;

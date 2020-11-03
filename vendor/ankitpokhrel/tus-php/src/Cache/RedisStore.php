@@ -51,6 +51,10 @@ class RedisStore extends AbstractCache
             return $contents;
         }
 
+        if ( ! $contents) {
+            return null;
+        }
+
         $isExpired = Carbon::parse($contents['expires_at'])->lt(Carbon::now());
 
         return $isExpired ? null : $contents;
@@ -63,10 +67,10 @@ class RedisStore extends AbstractCache
     {
         $contents = $this->get($key) ?? [];
 
-        if (is_array($value)) {
+        if (\is_array($value)) {
             $contents = $value + $contents;
         } else {
-            array_push($contents, $value);
+            $contents[] = $value;
         }
 
         $status = $this->redis->set($this->getPrefix() . $key, json_encode($contents));

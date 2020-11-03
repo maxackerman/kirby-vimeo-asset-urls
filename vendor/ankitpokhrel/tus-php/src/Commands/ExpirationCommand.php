@@ -23,11 +23,11 @@ class ExpirationCommand extends Command
         $this
             ->setName('tus:expired')
             ->setDescription('Remove expired uploads.')
-            ->setHelp('Deletes all expired uploads to free server resources. Values can be redis or file. Defaults to file.')
+            ->setHelp('Deletes all expired uploads to free server resources. Values can be redis, file or apcu. Defaults to file.')
             ->addArgument(
                 'cache-adapter',
                 InputArgument::OPTIONAL,
-                'Cache adapter to use, redis or file. Optional, defaults to file based cache.',
+                'Cache adapter to use: redis, file or apcu',
                 'file'
             )
             ->addOption(
@@ -55,7 +55,9 @@ class ExpirationCommand extends Command
             Config::set($config);
         }
 
-        $this->server = new TusServer(CacheFactory::make($input->getArgument('cache-adapter')));
+        $cacheAdapter = $input->getArgument('cache-adapter') ?? 'file';
+
+        $this->server = new TusServer(CacheFactory::make($cacheAdapter));
 
         $deleted = $this->server->handleExpiration();
 
@@ -63,10 +65,12 @@ class ExpirationCommand extends Command
             $output->writeln('<comment>Nothing to delete.</comment>');
         } else {
             foreach ($deleted as $key => $item) {
-                $output->writeln('<comment>' . ($key + 1) . ". Deleted {$item['name']} from " . dirname($item['file_path']) . '</comment>');
+                $output->writeln('<comment>' . ($key + 1) . ". Deleted {$item['name']} from " . \dirname($item['file_path']) . '</comment>');
             }
         }
 
         $output->writeln('');
+        
+        return 0;
     }
 }

@@ -8,6 +8,10 @@ use TusPhp\Request;
 use TusPhp\Response;
 use Ramsey\Uuid\Uuid;
 use TusPhp\Cache\Cacheable;
+use TusPhp\Events\UploadMerged;
+use TusPhp\Events\UploadCreated;
+use TusPhp\Events\UploadComplete;
+use TusPhp\Events\UploadProgress;
 use TusPhp\Middleware\Middleware;
 use TusPhp\Exception\FileException;
 use TusPhp\Exception\ConnectionException;
@@ -18,22 +22,22 @@ use Symfony\Component\HttpFoundation\Response as HttpResponse;
 class Server extends AbstractTus
 {
     /** @const string Tus Creation Extension */
-    const TUS_EXTENSION_CREATION = 'creation';
+    public const TUS_EXTENSION_CREATION = 'creation';
 
     /** @const string Tus Termination Extension */
-    const TUS_EXTENSION_TERMINATION = 'termination';
+    public const TUS_EXTENSION_TERMINATION = 'termination';
 
     /** @const string Tus Checksum Extension */
-    const TUS_EXTENSION_CHECKSUM = 'checksum';
+    public const TUS_EXTENSION_CHECKSUM = 'checksum';
 
     /** @const string Tus Expiration Extension */
-    const TUS_EXTENSION_EXPIRATION = 'expiration';
+    public const TUS_EXTENSION_EXPIRATION = 'expiration';
 
     /** @const string Tus Concatenation Extension */
-    const TUS_EXTENSION_CONCATENATION = 'concatenation';
+    public const TUS_EXTENSION_CONCATENATION = 'concatenation';
 
     /** @const array All supported tus extensions */
-    const TUS_EXTENSIONS = [
+    public const TUS_EXTENSIONS = [
         self::TUS_EXTENSION_CREATION,
         self::TUS_EXTENSION_TERMINATION,
         self::TUS_EXTENSION_CHECKSUM,
@@ -42,10 +46,10 @@ class Server extends AbstractTus
     ];
 
     /** @const int 460 Checksum Mismatch */
-    const HTTP_CHECKSUM_MISMATCH = 460;
+    private const HTTP_CHECKSUM_MISMATCH = 460;
 
     /** @const string Default checksum algorithm */
-    const DEFAULT_CHECKSUM_ALGORITHM = 'sha256';
+    private const DEFAULT_CHECKSUM_ALGORITHM = 'sha256';
 
     /** @var Request */
     protected $request;
@@ -72,13 +76,15 @@ class Server extends AbstractTus
      * TusServer constructor.
      *
      * @param Cacheable|string $cacheAdapter
+     *
+     * @throws \ReflectionException
      */
     public function __construct($cacheAdapter = 'file')
     {
         $this->request    = new Request;
         $this->response   = new Response;
         $this->middleware = new Middleware;
-        $this->uploadDir  = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'uploads';
+        $this->uploadDir  = \dirname(__DIR__, 2) . '/' . 'uploads';
 
         $this->setCache($cacheAdapter);
     }
@@ -152,7 +158,7 @@ class Server extends AbstractTus
             return self::DEFAULT_CHECKSUM_ALGORITHM;
         }
 
-        list($checksumAlgorithm, /* $checksum */) = explode(' ', $checksumHeader);
+        [$checksumAlgorithm, /* $checksum */] = explode(' ', $checksumHeader);
 
         return $checksumAlgorithm;
     }
@@ -252,7 +258,7 @@ class Server extends AbstractTus
 
         $requestMethod = $this->getRequest()->method();
 
-        if ( ! in_array($requestMethod, $this->getRequest()->allowedHttpVerbs())) {
+        if ( ! \in_array($requestMethod, $this->getRequest()->allowedHttpVerbs(), true)) {
             return $this->response->send(null, HttpResponse::HTTP_METHOD_NOT_ALLOWED);
         }
 
@@ -347,7 +353,7 @@ class Server extends AbstractTus
         }
 
         $uploadKey = $this->getUploadKey();
-        $filePath  = $this->uploadDir . DIRECTORY_SEPARATOR . $fileName;
+        $filePath  = $this->uploadDir . '/' . $fileName;
 
         if ($this->getRequest()->isFinal()) {
             return $this->handleConcatenation($fileName, $filePath);
@@ -367,18 +373,21 @@ class Server extends AbstractTus
             'size' => $this->getRequest()->header('Upload-Length'),
             'file_path' => $filePath,
             'location' => $location,
-        ])->setChecksum($checksum);
+        ])->setKey($uploadKey)->setChecksum($checksum)->setUploadMetadata($this->getRequest()->extractAllMeta());
 
         $this->cache->set($uploadKey, $file->details() + ['upload_type' => $uploadType]);
 
-        return $this->response->send(
-            null,
-            HttpResponse::HTTP_CREATED,
-            [
-                'Location' => $location,
-                'Upload-Expires' => $this->cache->get($uploadKey)['expires_at'],
-            ]
+        $headers = [
+            'Location' => $location,
+            'Upload-Expires' => $this->cache->get($uploadKey)['expires_at'],
+        ];
+
+        $this->event()->dispatch(
+            new UploadCreated($file, $this->getRequest(), $this->getResponse()->setHeaders($headers)),
+            UploadCreated::NAME
         );
+
+        return $this->response->send(null, HttpResponse::HTTP_CREATED, $headers);
     }
 
     /**
@@ -403,7 +412,7 @@ class Server extends AbstractTus
             'size' => 0,
             'file_path' => $filePath,
             'location' => $location,
-        ])->setFilePath($filePath);
+        ])->setFilePath($filePath)->setKey($uploadKey)->setUploadMetadata($this->getRequest()->extractAllMeta());
 
         $file->setOffset($file->merge($files));
 
@@ -414,12 +423,18 @@ class Server extends AbstractTus
             return $this->response->send(null, self::HTTP_CHECKSUM_MISMATCH);
         }
 
+        $file->setChecksum($checksum);
         $this->cache->set($uploadKey, $file->details() + ['upload_type' => self::UPLOAD_TYPE_FINAL]);
 
         // Cleanup.
         if ($file->delete($filePaths, true)) {
             $this->cache->deleteAll($partials);
         }
+
+        $this->event()->dispatch(
+            new UploadMerged($file, $this->getRequest(), $this->getResponse()),
+            UploadMerged::NAME
+        );
 
         return $this->response->send(
             ['data' => ['checksum' => $checksum]],
@@ -449,7 +464,7 @@ class Server extends AbstractTus
             return $this->response->send(null, $status);
         }
 
-        $file     = $this->buildFile($meta);
+        $file     = $this->buildFile($meta)->setUploadMetadata($meta['metadata'] ?? []);
         $checksum = $meta['checksum'];
 
         try {
@@ -457,8 +472,20 @@ class Server extends AbstractTus
             $offset   = $file->setKey($uploadKey)->setChecksum($checksum)->upload($fileSize);
 
             // If upload is done, verify checksum.
-            if ($offset === $fileSize && ! $this->verifyChecksum($checksum, $meta['file_path'])) {
-                return $this->response->send(null, self::HTTP_CHECKSUM_MISMATCH);
+            if ($offset === $fileSize) {
+                if ( ! $this->verifyChecksum($checksum, $meta['file_path'])) {
+                    return $this->response->send(null, self::HTTP_CHECKSUM_MISMATCH);
+                }
+
+                $this->event()->dispatch(
+                    new UploadComplete($file, $this->getRequest(), $this->getResponse()),
+                    UploadComplete::NAME
+                );
+            } else {
+                $this->event()->dispatch(
+                    new UploadProgress($file, $this->getRequest(), $this->getResponse()),
+                    UploadProgress::NAME
+                );
             }
         } catch (FileException $e) {
             return $this->response->send($e->getMessage(), HttpResponse::HTTP_UNPROCESSABLE_ENTITY);
@@ -611,7 +638,7 @@ class Server extends AbstractTus
     {
         $file = new File($meta['name'], $this->cache);
 
-        if (array_key_exists('offset', $meta)) {
+        if (\array_key_exists('offset', $meta)) {
             $file->setMeta($meta['offset'], $meta['size'], $meta['file_path'], $meta['location']);
         }
 
@@ -652,11 +679,11 @@ class Server extends AbstractTus
             return '';
         }
 
-        list($checksumAlgorithm, $checksum) = explode(' ', $checksumHeader);
+        [$checksumAlgorithm, $checksum] = explode(' ', $checksumHeader);
 
         $checksum = base64_decode($checksum);
 
-        if ( ! in_array($checksumAlgorithm, hash_algos()) || false === $checksum) {
+        if (false === $checksum || ! \in_array($checksumAlgorithm, hash_algos(), true)) {
             return $this->response->send(null, HttpResponse::HTTP_BAD_REQUEST);
         }
 
@@ -690,9 +717,9 @@ class Server extends AbstractTus
      */
     protected function getPathForPartialUpload(string $key) : string
     {
-        list($actualKey, /* $partialUploadKey */) = explode(self::PARTIAL_UPLOAD_NAME_SEPARATOR, $key);
+        [$actualKey, /* $partialUploadKey */] = explode(self::PARTIAL_UPLOAD_NAME_SEPARATOR, $key);
 
-        $path = $this->uploadDir . DIRECTORY_SEPARATOR . $actualKey . DIRECTORY_SEPARATOR;
+        $path = $this->uploadDir . '/' . $actualKey . '/';
 
         if ( ! file_exists($path)) {
             mkdir($path);

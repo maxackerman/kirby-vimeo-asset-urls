@@ -11,16 +11,16 @@ use TusPhp\Exception\OutOfRangeException;
 class File
 {
     /** @const Max chunk size */
-    const CHUNK_SIZE = 8192; // 8 bytes.
+    public const CHUNK_SIZE = 8192; // 8 kilobytes.
 
     /** @const Input stream */
-    const INPUT_STREAM = 'php://input';
+    public const INPUT_STREAM = 'php://input';
 
     /** @const Read binary mode */
-    const READ_BINARY = 'rb';
+    public const READ_BINARY = 'rb';
 
     /** @const Append binary mode */
-    const APPEND_BINARY = 'ab+';
+    public const APPEND_BINARY = 'ab';
 
     /** @var string */
     protected $key;
@@ -45,6 +45,9 @@ class File
 
     /** @var int */
     protected $fileSize;
+
+    /** @var string[] */
+    private $uploadMetadata = [];
 
     /**
      * File constructor.
@@ -247,6 +250,18 @@ class File
     }
 
     /**
+     * @param string[] $metadata
+     *
+     * @return File
+     */
+    public function setUploadMetadata(array $metadata) : self
+    {
+        $this->uploadMetadata = $metadata;
+
+        return $this;
+    }
+
+    /**
      * Get input stream.
      *
      * @return string
@@ -272,6 +287,7 @@ class File
             'checksum' => $this->checksum,
             'location' => $this->location,
             'file_path' => $this->filePath,
+            'metadata' => $this->uploadMetadata,
             'created_at' => $now->format($this->cache::RFC_7231),
             'expires_at' => $now->addSeconds($this->cache->getTtl())->format($this->cache::RFC_7231),
         ];
@@ -288,10 +304,8 @@ class File
      */
     public function upload(int $totalBytes) : int
     {
-        $bytesWritten = $this->offset;
-
-        if ($bytesWritten === $totalBytes) {
-            return $bytesWritten;
+        if ($this->offset === $totalBytes) {
+            return $this->offset;
         }
 
         $input  = $this->open($this->getInputStream(), self::READ_BINARY);
@@ -299,7 +313,7 @@ class File
         $key    = $this->getKey();
 
         try {
-            $this->seek($output, $bytesWritten);
+            $this->seek($output, $this->offset);
 
             while ( ! feof($input)) {
                 if (CONNECTION_NORMAL !== connection_status()) {
@@ -309,15 +323,15 @@ class File
                 $data  = $this->read($input, self::CHUNK_SIZE);
                 $bytes = $this->write($output, $data, self::CHUNK_SIZE);
 
-                $bytesWritten += $bytes;
+                $this->offset += $bytes;
 
-                $this->cache->set($key, ['offset' => $bytesWritten]);
+                $this->cache->set($key, ['offset' => $this->offset]);
 
-                if ($bytesWritten > $totalBytes) {
+                if ($this->offset > $totalBytes) {
                     throw new OutOfRangeException('The uploaded file is corrupt.');
                 }
 
-                if ($bytesWritten === $totalBytes) {
+                if ($this->offset === $totalBytes) {
                     break;
                 }
             }
@@ -326,11 +340,11 @@ class File
             $this->close($output);
         }
 
-        return $bytesWritten;
+        return $this->offset;
     }
 
     /**
-     * Open file in append binary mode.
+     * Open file in given mode.
      *
      * @param string $filePath
      * @param string $mode
@@ -376,7 +390,9 @@ class File
     }
 
     /**
-     * @param Resource $handle
+     * Move file pointer to given offset.
+     *
+     * @param resource $handle
      * @param int      $offset
      * @param int      $whence
      *
@@ -398,7 +414,7 @@ class File
     /**
      * Read data from file.
      *
-     * @param Resource $handle
+     * @param resource $handle
      * @param int      $chunkSize
      *
      * @throws FileException
@@ -419,7 +435,7 @@ class File
     /**
      * Write data to file.
      *
-     * @param Resource $handle
+     * @param resource $handle
      * @param string   $data
      * @param int|null $length
      *
@@ -429,7 +445,7 @@ class File
      */
     public function write($handle, string $data, $length = null) : int
     {
-        $bytesWritten = is_int($length) ? fwrite($handle, $data, $length) : fwrite($handle, $data);
+        $bytesWritten = \is_int($length) ? fwrite($handle, $data, $length) : fwrite($handle, $data);
 
         if (false === $bytesWritten) {
             throw new FileException('Cannot write to a file.');
@@ -486,7 +502,7 @@ class File
         $status = @copy($source, $destination);
 
         if (false === $status) {
-            throw new FileException('Cannot copy source to destination.');
+            throw new FileException(sprintf('Cannot copy source (%s) to destination (%s).', $source, $destination));
         }
 
         return $status;
@@ -505,14 +521,14 @@ class File
         $status = $this->deleteFiles($files);
 
         if ($status && $folder) {
-            return rmdir(dirname(current($files)));
+            return rmdir(\dirname(current($files)));
         }
 
         return $status;
     }
 
     /**
-     * Delete files.
+     * Delete multiple files.
      *
      * @param array $files
      *
