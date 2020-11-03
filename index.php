@@ -9,8 +9,8 @@ Kirby::plugin('violetoffice/vimeoassets', [
     'token' => null
   ],
   'hooks' => [
-    'file.update:after' => function ($file) {
-      \Violetoffice\Vimeoassets\Vimeo::checkForLinks($file);
+    'file.update:after' => function ($newFile) {
+      \Violetoffice\Vimeoassets\Vimeo::checkForLinks($newFile);
     }
   ]
 ]);
